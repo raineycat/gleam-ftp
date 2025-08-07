@@ -1,24 +1,17 @@
-# gftp
+# Gleam FTP Server
 
-[![Package Version](https://img.shields.io/hexpm/v/gftp)](https://hex.pm/packages/gftp)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/gftp/)
+![Version](https://img.shields.io/badge/Version-1.0.0-pink)
 
-```sh
-gleam add gftp@1
-```
-```gleam
-import gftp
-
-pub fn main() -> Nil {
-  // TODO: An example of the project in use
-}
-```
-
-Further documentation can be found at <https://hexdocs.pm/gftp>.
-
-## Development
+A simple FTP server written in Gleam
 
 ```sh
-gleam run   # Run the project
-gleam test  # Run the tests
+# Run the server on port 2100
+gleam run -- --port 2100
 ```
+
+### Available options:
+- `--address`: The address to bind to (default: `0.0.0.0`)
+- `--port`: The port the server listens on (default: `21`)
+- `--welcome`: The welcome message to send to clients (default: `GleamFTP Server`)
+- `--external-address`: The public IP of the server, sent to clients when connecting with passive mode (default: `127.0.0.1`)
+- `--help`: Shows more info about the command line options

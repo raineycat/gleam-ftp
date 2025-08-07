@@ -35,7 +35,7 @@ pub fn command() -> Command(ServerOpts) {
     "GleamFTP Server",
   ))
   |> clip.opt(str_opt(
-    "external_address",
+    "external-address",
     "The server's public IPv4 address, sent to passive mode clients",
     "127.0.0.1",
   ))
