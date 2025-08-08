@@ -1,83 +1,98 @@
+import birl
+import filepath
 import gftp/cli
 import gftp/os_info
 import gftp/passive
+import gftp/state
 import gftp/utils
 import gleam/bytes_tree
 import gleam/erlang/process
 import gleam/int
 import gleam/list
-import gleam/option.{type Option}
 import gleam/otp/actor
+import gleam/result
 import gleam/string
 import glisten
 import glisten/socket
-import glisten/socket/options
 import glisten/tcp
 import logging
 import mug
-
-pub type ClientState {
-  ClientState(
-    sock: socket.Socket,
-    auth: AuthState,
-    closing: Bool,
-    working_dir: String,
-    transfer_type: TransferType,
-    data_conn: DataConnection,
-  )
-}
-
-pub type AuthState {
-  Unauthenticated
-  Authenticating(username: String)
-  Authenticated(username: String)
-}
-
-pub type TransferType {
-  Text
-  Binary
-}
-
-pub type DataConnection {
-  None
-  Passive(conn: process.Subject(passive.PassiveConnMessage))
-  Active(addr: glisten.IpAddress, port: Int, conn: Option(mug.Socket))
-}
-
-pub fn new_client(sock: socket.Socket) -> ClientState {
-  ClientState(
-    sock:,
-    auth: Unauthenticated,
-    closing: False,
-    working_dir: "/",
-    transfer_type: Text,
-    data_conn: None,
-  )
-}
+import simplifile
 
 pub fn handle_cmd(
   cmd: List(String),
-  state: ClientState,
+  state: state.ClientState,
   opts: cli.ServerOpts,
-) -> Result(#(String, ClientState), String) {
+) -> Result(#(String, state.ClientState), String) {
   case cmd {
-    ["SYST"] -> Ok(#("215 " <> string.inspect(os_info.get_os_type()), state))
+    ["SYST"] ->
+      Ok(#(
+        "215 UNIX Type: L8 | " <> string.inspect(os_info.get_os_type()),
+        state,
+      ))
 
-    ["FEAT"] -> Ok(#("202 Not supported", state))
+    ["STAT"] ->
+      Ok(#(
+        "211- gFTP Status:\r\n Gleam/Erlang server on "
+          <> string.inspect(os_info.get_os_type())
+          <> "\r\n MOTD: "
+          <> opts.welcome_msg
+          <> "\r\n Address: "
+          <> opts.external_address
+          <> "\r\n Server: https://github.com/raineycat/gleam-ftp\r\n "
+          <> get_status_string(state)
+          <> "\r\n211 End of status",
+        state,
+      ))
+
+    ["FEAT"] ->
+      Ok(#(
+        "211-Extensions supported:\r\n " <> "SIZE" <> "\r\n211 End extensions",
+        state,
+      ))
+
+    ["HELP", ..] ->
+      Ok(#(
+        "214 For help, see: https://en.wikipedia.org/wiki/List_of_FTP_commands",
+        state,
+      ))
+
+    ["NOOP"] -> Ok(#("200 No-op", state))
 
     ["PWD"] | ["XPWD"] -> Ok(#("257 \"" <> state.working_dir <> "\"", state))
 
     ["CWD", ..rest] | ["XCWD", ..rest] -> {
       let dir = rest |> string.join(" ")
-      logging.log(logging.Debug, "CLient CWD to: " <> dir)
-      let state = ClientState(..state, working_dir: dir)
+      let dir = case filepath.is_absolute(dir) {
+        True -> dir
+        False -> filepath.join(state.working_dir, dir)
+      }
+      let dir = case filepath.expand(dir) {
+        Ok(new) -> new
+        Error(_) -> dir
+      }
+
+      logging.log(logging.Debug, "Client CWD to: " <> dir)
+      let state = state.ClientState(..state, working_dir: dir)
+      Ok(#("250 Changed working directory", state))
+    }
+
+    ["CDUP"] -> {
+      let dir = filepath.directory_name(state.working_dir)
+      let dir = case filepath.expand(dir) {
+        Ok(new) -> new
+        Error(_) -> dir
+      }
+
+      logging.log(logging.Debug, "Client CWD to: " <> dir)
+      let state = state.ClientState(..state, working_dir: dir)
       Ok(#("250 Changed working directory", state))
     }
 
     ["TYPE", new_type] -> {
       let new_type = case new_type {
-        "A" -> Ok(Text)
-        "I" -> Ok(Binary)
+        "A" -> Ok(state.Text)
+        "I" -> Ok(state.Binary)
         unknown -> {
           logging.log(logging.Warning, "Unknown transfer type: " <> unknown)
           Error(unknown)
@@ -88,32 +103,50 @@ pub fn handle_cmd(
         Ok(t) ->
           Ok(#(
             "200 Changed transfer type",
-            ClientState(..state, transfer_type: t),
+            state.ClientState(..state, transfer_type: t),
           ))
 
         Error(_) -> Error("504 Unknown transfer type")
       }
     }
 
-    ["USER", username] -> {
+    ["OPTS", "UTF8", mode] -> {
+      logging.log(logging.Debug, "UTF-8 support: " <> mode)
+      let encoding = case mode {
+        "ON" -> state.UTF8
+        _ -> state.Ascii
+      }
+      let state = state.ClientState(..state, encoding: encoding)
+      Ok(#("200 Done", state))
+    }
+
+    ["OPTS", ..params] -> {
       logging.log(
-        logging.Debug,
-        "User '" <> username <> "' is trying to log in",
+        logging.Warning,
+        "Unknown option: " <> string.join(params, ": "),
       )
-      let state = ClientState(..state, auth: Authenticating(username))
+      Error("504 Unknown option")
+    }
+
+    ["USER", username] -> {
+      logging.log(logging.Info, "User '" <> username <> "' is trying to log in")
+      let state =
+        state.ClientState(..state, auth: state.Authenticating(username))
       Ok(#("331 Password required", state))
     }
 
     ["PASS", password] ->
       case state.auth {
-        Authenticating(username) -> handle_login(state, username, password)
+        state.Authenticating(username) ->
+          handle_login(state, username, password)
         _ -> Error("500 Invalid state")
       }
 
     ["QUIT"] -> {
+      logging.log(logging.Info, "Client disconnected")
       Ok(#(
         "221 Goodbye!",
-        ClientState(..state, auth: Unauthenticated, closing: True),
+        state.ClientState(..state, auth: state.Unauthenticated, closing: True),
       ))
     }
 
@@ -129,27 +162,57 @@ pub fn handle_cmd(
       }
     }
 
-    ["PASV"] -> handle_begin_passive(state, opts)
+    ["PASV"] -> passive.handle_begin_passive(state, opts)
 
     ["LIST"] -> {
       case state.auth {
-        Authenticated(_username) -> {
-          case state.data_conn {
-            Passive(sub) -> {
-              let data =
-                bytes_tree.from_string(
-                  "-rw-r--r-- 1 user group 1234 Aug  7 12:00 file.txt\r\ndrwxr-xr-x 2 user group 4096 Aug  7 12:01 folder\r\n",
-                )
-              sub
-              |> actor.send(passive.SendToClient(data, state.sock, "226 Done"))
-              Ok(#("150 Sending over passive connection...", state))
+        state.Authenticated(_username) -> {
+          let path = transform_path(opts, state.working_dir)
+          case read_dir_ex(path) {
+            Ok(dir_list) ->
+              transmit_on_data_ch(
+                state,
+                bytes_tree.from_string(string.join(dir_list, "\r\n") <> "\r\n"),
+                "226 Finished transfer",
+              )
+            Error(e) -> {
+              logging.log(
+                logging.Warning,
+                "Failed to list dir: " <> path <> ": " <> string.inspect(e),
+              )
+              Error("451 Failed to list dir: " <> string.inspect(e))
             }
-            _ -> Error("450 No valid data connection")
           }
         }
         _ -> Error("530 Please login first")
       }
     }
+
+    ["NLST"] -> {
+      case state.auth {
+        state.Authenticated(_username) -> {
+          let path = transform_path(opts, state.working_dir)
+          case simplifile.read_directory(path) {
+            Ok(dir_list) ->
+              transmit_on_data_ch(
+                state,
+                bytes_tree.from_string(string.join(dir_list, "\r\n") <> "\r\n"),
+                "226 Finished transfer",
+              )
+            Error(e) -> {
+              logging.log(
+                logging.Warning,
+                "Failed to list dir: " <> path <> ": " <> string.inspect(e),
+              )
+              Error("451 Failed to list dir: " <> string.inspect(e))
+            }
+          }
+        }
+        _ -> Error("530 Please login first")
+      }
+    }
+
+    ["ALLO"] -> Ok(#("202 Obsolete", state))
 
     unknown -> {
       logging.log(
@@ -162,10 +225,10 @@ pub fn handle_cmd(
 }
 
 fn handle_login(
-  state: ClientState,
+  state: state.ClientState,
   username: String,
   password: String,
-) -> Result(#(String, ClientState), String) {
+) -> Result(#(String, state.ClientState), String) {
   let actual_pw = username <> "!"
   case password {
     pw if actual_pw == pw -> {
@@ -173,7 +236,8 @@ fn handle_login(
         logging.Info,
         "User '" <> username <> "' logged in successfully",
       )
-      let state = ClientState(..state, auth: Authenticated(username))
+      let state =
+        state.ClientState(..state, auth: state.Authenticated(username))
       Ok(#("230 Logged in!", state))
     }
     _ -> Error("430 Invalid UN/PW")
@@ -183,8 +247,8 @@ fn handle_login(
 fn handle_begin_active(
   addr: glisten.IpAddress,
   port: Int,
-  state: ClientState,
-) -> Result(#(String, ClientState), String) {
+  state: state.ClientState,
+) -> Result(#(String, state.ClientState), String) {
   logging.log(
     logging.Debug,
     "Using active channel to "
@@ -195,59 +259,132 @@ fn handle_begin_active(
 
   Ok(#(
     "200 Accepted",
-    ClientState(..state, data_conn: Active(addr, port, option.None)),
+    state.ClientState(..state, data_conn: state.Active(addr, port)),
   ))
 }
 
-fn handle_begin_passive(
-  state: ClientState,
-  opts: cli.ServerOpts,
-) -> Result(#(String, ClientState), String) {
-  let addr = utils.string_to_ipv4_address(opts.external_address)
-  let sock =
-    tcp.listen(0, [
-      options.ActiveMode(options.Passive),
-      options.Ip(options.Address(addr)),
-    ])
-
-  case sock {
-    Ok(s) -> {
-      let addr_nums = case addr {
-        options.IpV4(a, b, c, d) ->
-          [a, b, c, d] |> list.map(int.to_string) |> string.join(",")
-        options.IpV6(a, b, c, d, e, f, g, h) ->
-          [a, b, c, d, e, f, g, h]
-          |> list.map(int.to_string)
-          |> string.join(",")
-      }
-
-      let assert Ok(#(_, actual_port)) = tcp.sockname(s)
-      let port_nums =
-        utils.ftp_encode_port_num(actual_port)
-        |> fn(x) { [x.0, x.1] }
-        |> list.map(int.to_string)
-        |> string.join(",")
-
-      let actor =
-        actor.new(passive.Listening(s))
-        |> actor.on_message(passive.conn_handle_msg)
-        |> actor.start()
-
-      case actor {
-        Ok(a) -> {
-          let state = ClientState(..state, data_conn: Passive(a.data))
-          a.data |> actor.send(passive.AcceptConnection)
-          Ok(#("227 " <> addr_nums <> "," <> port_nums, state))
+fn transmit_on_data_ch(
+  state: state.ClientState,
+  data: bytes_tree.BytesTree,
+  resp: String,
+) -> Result(#(String, state.ClientState), String) {
+  case state.data_conn {
+    state.Passive(sub) -> {
+      sub
+      |> actor.send(state.SendToClient(data, state.sock, resp))
+      Ok(#("150 Sending over passive connection...", state))
+    }
+    state.Active(addr, port) -> {
+      case mug.new(glisten.ip_address_to_string(addr), port) |> mug.connect() {
+        Ok(sock) -> {
+          process.spawn(fn() {
+            active_send_handler(
+              sock,
+              data,
+              state.sock,
+              bytes_tree.from_string(resp <> "\r\n"),
+            )
+          })
+          Ok(#("150 Sending over active connection...", state))
         }
-        Error(e) -> {
-          logging.log(
-            logging.Error,
-            "Failed to start passive connection actor: " <> string.inspect(e),
-          )
-          Error("500 Actor start failed")
-        }
+        Error(e) ->
+          Error("500 Failed to connect to active socket: " <> string.inspect(e))
       }
     }
-    Error(e) -> Error("500 failed to listen: " <> string.inspect(e))
+    _ -> Error("450 No valid data connection")
   }
+}
+
+fn active_send_handler(
+  data_sock: mug.Socket,
+  data: bytes_tree.BytesTree,
+  reply_sock: socket.Socket,
+  reply: bytes_tree.BytesTree,
+) {
+  case data_sock |> mug.send(bytes_tree.to_bit_array(data)) {
+    Ok(_) -> {
+      let _ = data_sock |> mug.shutdown()
+      let _ = reply_sock |> tcp.send(reply)
+      Nil
+    }
+    Error(e) ->
+      logging.log(
+        logging.Warning,
+        "Failed to send over active conn: " <> string.inspect(e),
+      )
+  }
+}
+
+fn get_status_string(state: state.ClientState) -> String {
+  "Auth: "
+  <> string.inspect(state.auth)
+  <> "; Type: "
+  <> string.inspect(state.transfer_type)
+  <> "; Encoding: "
+  <> string.inspect(state.encoding)
+  <> ";"
+}
+
+fn transform_path(opts: cli.ServerOpts, path: String) -> String {
+  let path = case filepath.is_absolute(path) {
+    True -> path |> string.drop_start(1)
+    False -> path
+  }
+
+  let path = filepath.join(opts.base_dir, path)
+
+  let path = case filepath.expand(path) {
+    Ok(p) -> p
+    Error(_) -> path
+  }
+
+  logging.log(logging.Debug, "Transformed path: " <> path)
+  path
+}
+
+fn read_dir_ex(path: String) -> Result(List(String), simplifile.FileError) {
+  use files <- result.try(simplifile.read_directory(path))
+  Ok(
+    files
+    |> list.map(fn(name) {
+      let item_path = filepath.join(path, name)
+      get_ls_file_info(item_path)
+    })
+    |> list.filter(fn(x) { result.is_ok(x) })
+    |> list.map(fn(x) { result.unwrap(x, "") }),
+  )
+}
+
+fn get_ls_file_info(item_path: String) {
+  use info <- result.try(simplifile.file_info(item_path))
+  let _perms = simplifile.file_info_permissions(info)
+
+  use is_dir <- result.try(simplifile.is_directory(item_path))
+  let dir_marker = case is_dir {
+    True -> "d"
+    False -> "-"
+  }
+  // todo: actual permission reporting
+  let permission_string = case is_dir {
+    True -> "rwxr-xr-x"
+    False -> "rw-r--r--"
+  }
+  let size_string = info.size |> int.to_string() |> string.pad_start(13, " ")
+  let modified_at = birl.from_unix(info.mtime_seconds)
+  let modified_day = modified_at |> birl.get_day()
+
+  Ok(
+    dir_marker
+    <> permission_string
+    <> " 1 root root "
+    <> size_string
+    <> " "
+    <> birl.short_string_month(modified_at)
+    <> " "
+    <> int.to_string(modified_day.date)
+    <> "  "
+    <> int.to_string(modified_day.year)
+    <> " "
+    <> filepath.base_name(item_path),
+  )
 }

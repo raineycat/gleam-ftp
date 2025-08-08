@@ -1,5 +1,6 @@
 import gftp/cli
 import gftp/protocol
+import gftp/state
 import gleam/bit_array
 import gleam/bytes_tree
 import gleam/erlang/process
@@ -54,13 +55,13 @@ fn client_proc(client: socket.Socket, opts: cli.ServerOpts) {
       bytes_tree.from_string("220 " <> opts.welcome_msg <> "\r\n"),
     )
 
-  client_loop(client, opts, protocol.new_client(client))
+  client_loop(client, opts, state.new_client(client))
 }
 
 fn client_loop(
   client: socket.Socket,
   opts: cli.ServerOpts,
-  state: protocol.ClientState,
+  state: state.ClientState,
 ) {
   let resp = case tcp.receive(client, 0) {
     Ok(data) -> {

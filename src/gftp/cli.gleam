@@ -7,6 +7,7 @@ pub type ServerOpts {
     port: Int,
     welcome_msg: String,
     external_address: String,
+    base_dir: String,
   )
 }
 
@@ -24,8 +25,9 @@ pub fn command() -> Command(ServerOpts) {
     use port <- clip.parameter
     use welcome <- clip.parameter
     use external <- clip.parameter
+    use base_dir <- clip.parameter
 
-    ServerOpts(address, port, welcome, external)
+    ServerOpts(address, port, welcome, external, base_dir)
   })
   |> clip.opt(str_opt("address", "The address to bind to", "0.0.0.0"))
   |> clip.opt(int_opt("port", "The port to listen on", 21))
@@ -39,4 +41,5 @@ pub fn command() -> Command(ServerOpts) {
     "The server's public IPv4 address, sent to passive mode clients",
     "127.0.0.1",
   ))
+  |> clip.opt(str_opt("base-dir", "The base directory to serve files from", "."))
 }
