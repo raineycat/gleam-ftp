@@ -219,6 +219,31 @@ pub fn handle_cmd(
       Error("502 Command not implemented: " <> path)
     }
 
+    ["RETR", path] -> {
+      let path =
+        path
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+      logging.log(logging.Debug, "Client get file: " <> path)
+
+      case
+        case state.transfer_type {
+          state.Text -> handle_text_read(path)
+          state.Binary -> handle_binary_read(path)
+        }
+      {
+        Ok(data) -> transmit_on_data_ch(state, data, "226 Finished transfer")
+        Error(e) -> {
+          logging.log(
+            logging.Warning,
+            "Failed to transmit file: " <> string.inspect(e),
+          )
+          Error("502 TODO")
+        }
+      }
+    }
+
     unknown -> {
       logging.log(
         logging.Warning,
@@ -392,4 +417,25 @@ fn get_ls_file_info(item_path: String) {
     <> " "
     <> filepath.base_name(item_path),
   )
+}
+
+fn handle_binary_read(
+  real_path: String,
+) -> Result(bytes_tree.BytesTree, simplifile.FileError) {
+  case simplifile.read_bits(real_path) {
+    Ok(data) -> Ok(bytes_tree.from_bit_array(data))
+    Error(e) -> Error(e)
+  }
+}
+
+fn handle_text_read(
+  real_path: String,
+) -> Result(bytes_tree.BytesTree, simplifile.FileError) {
+  case simplifile.read(real_path) {
+    Ok(text) ->
+      Ok(bytes_tree.from_string(
+        { text |> utils.normalise_newlines() } <> "\r\n",
+      ))
+    Error(e) -> Error(e)
+  }
 }

@@ -24,3 +24,7 @@ pub fn unquote(s: String) -> String {
     False -> s
   }
 }
+
+pub fn normalise_newlines(text: String) -> String {
+  text |> string.replace("\r\n", "\n") |> string.replace("\n", "\r\n")
+}
