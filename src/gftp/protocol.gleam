@@ -415,7 +415,7 @@ pub fn handle_cmd(
       receive_on_data_ch(state, fn(data) {
         logging.log(
           logging.Debug,
-          "Received from client: "
+          "Received from client (STOR): "
             <> path
             <> ": "
             <> data |> bytes_tree.byte_size() |> int.to_string()
@@ -429,17 +429,35 @@ pub fn handle_cmd(
       })
     }
 
-    ["APPE", _name] -> {
+    ["APPE", ..name] -> {
       use _ <- result.try(require_login(state))
       use _ <- result.try(require_write_access(state, opts))
-      Error("502 TODO")
+
+      let path =
+        name
+        |> string.join(" ")
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+
+      receive_on_data_ch(state, fn(data) {
+        logging.log(
+          logging.Debug,
+          "Received from client (APPE): "
+            <> path
+            <> ": "
+            <> data |> bytes_tree.byte_size() |> int.to_string()
+            <> " bytes",
+        )
+
+        case simplifile.append_bits(path, bytes_tree.to_bit_array(data)) {
+          Ok(_) -> "226 Saved to disk"
+          Error(e) -> "552 Failed to save file: " <> string.inspect(e)
+        }
+      })
     }
 
-    ["STOU", _name] -> {
-      use _ <- result.try(require_login(state))
-      use _ <- result.try(require_write_access(state, opts))
-      Error("502 TODO")
-    }
+    ["STOU", ..] -> Error("502 Command not supported")
 
     unknown -> {
       logging.log(
