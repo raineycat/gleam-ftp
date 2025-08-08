@@ -13,6 +13,7 @@ pub type ServerOpts {
     base_dir: String,
     allowed_logins: List(#(String, String)),
     allow_anon: Bool,
+    anons_can_write: Bool,
     read_only: Bool,
   )
 }
@@ -32,6 +33,7 @@ fn flag_opt(name: String, help_text: String) -> Flag {
 pub fn command() -> Command(ServerOpts) {
   clip.command({
     use allow_anon <- clip.parameter
+    use anons_can_write <- clip.parameter
     use read_only <- clip.parameter
     use bind_addr <- clip.parameter
     use port <- clip.parameter
@@ -58,10 +60,15 @@ pub fn command() -> Command(ServerOpts) {
       base_dir:,
       allowed_logins: login_list,
       allow_anon:,
+      anons_can_write:,
       read_only:,
     )
   })
   |> clip.flag(flag_opt("allow-anon", "Allow anonymous client connections"))
+  |> clip.flag(flag_opt(
+    "anons-can-write",
+    "Allow anonymous clients to perform create/write/delete operations",
+  ))
   |> clip.flag(flag_opt(
     "read-only",
     "Block all create/write/delete operations to the server",

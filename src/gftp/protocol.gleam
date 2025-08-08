@@ -713,6 +713,7 @@ fn require_write_access(
     state.Authenticated(_) if opts.read_only ->
       Error("530 This server is read-only")
     state.Authenticated(_) -> Ok(#("200 OK", state))
+    state.Anonymous if opts.anons_can_write -> Ok(#("200 OK", state))
     state.Anonymous -> Error("530 Anonymous users have no write access")
     _ -> Error("530 Please login first")
   }
