@@ -382,19 +382,41 @@ pub fn handle_cmd(
       }
     }
 
-    ["STOR", _name] -> {
+    ["STOR", ..name] -> {
       use _ <- result.try(require_login(state))
-      todo
+
+      let path =
+        name
+        |> string.join(" ")
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+
+      receive_on_data_ch(state, fn(data) {
+        logging.log(
+          logging.Debug,
+          "Received from client: "
+            <> path
+            <> ": "
+            <> data |> bytes_tree.byte_size() |> int.to_string()
+            <> " bytes",
+        )
+
+        case simplifile.write_bits(path, bytes_tree.to_bit_array(data)) {
+          Ok(_) -> "226 Saved to disk"
+          Error(e) -> "552 Failed to save file: " <> string.inspect(e)
+        }
+      })
     }
 
     ["APPE", _name] -> {
       use _ <- result.try(require_login(state))
-      todo
+      Error("502 TODO")
     }
 
     ["STOU", _name] -> {
       use _ <- result.try(require_login(state))
-      todo
+      Error("502 TODO")
     }
 
     unknown -> {
@@ -486,6 +508,38 @@ fn transmit_on_data_ch(
   }
 }
 
+fn receive_on_data_ch(
+  state: state.ClientState,
+  callback: fn(bytes_tree.BytesTree) -> String,
+) -> Result(#(String, state.ClientState), String) {
+  case state.data_conn {
+    state.Passive(sub) -> {
+      sub
+      |> actor.send(state.ReceiveFromClient(callback, state.sock))
+      Ok(#("150 Receiving over passive connection...", state))
+    }
+    state.Active(addr, port) -> {
+      case mug.new(glisten.ip_address_to_string(addr), port) |> mug.connect() {
+        Ok(sock) -> {
+          process.spawn(fn() {
+            let resp = case active_recv_handler(sock) {
+              Ok(data) -> callback(data)
+              Error(_) -> "426 Failed to receive data"
+            }
+
+            let _ =
+              state.sock |> tcp.send(bytes_tree.from_string(resp <> "\r\n"))
+          })
+          Ok(#("150 Receiving over active connection...", state))
+        }
+        Error(e) ->
+          Error("500 Failed to connect to active socket: " <> string.inspect(e))
+      }
+    }
+    _ -> Error("450 No valid data connection")
+  }
+}
+
 fn active_send_handler(
   data_sock: mug.Socket,
   data: bytes_tree.BytesTree,
@@ -503,6 +557,25 @@ fn active_send_handler(
         logging.Warning,
         "Failed to send over active conn: " <> string.inspect(e),
       )
+  }
+}
+
+fn active_recv_handler(
+  data_sock: mug.Socket,
+) -> Result(bytes_tree.BytesTree, Nil) {
+  case data_sock |> mug.receive(-1) {
+    Ok(data) -> {
+      let _ = data_sock |> mug.shutdown()
+      Ok(bytes_tree.from_bit_array(data))
+    }
+    Error(e) -> {
+      logging.log(
+        logging.Warning,
+        "Failed to send over active conn: " <> string.inspect(e),
+      )
+      let _ = data_sock |> mug.shutdown()
+      Error(Nil)
+    }
   }
 }
 

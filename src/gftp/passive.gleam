@@ -137,9 +137,51 @@ pub fn conn_handle_msg(
       actor.continue(state)
     }
 
-    state.ReceiveFromClient -> {
-      // actor.continue(state)
-      todo
+    state.ReceiveFromClient(callback, reply_sock) -> {
+      let result = case state {
+        state.Connected(client) -> {
+          use data <- result.try(
+            client |> tcp.receive(0) |> result.map_error(string.inspect),
+          )
+          logging.log(logging.Debug, "Got PASV data: " <> string.inspect(data))
+          use _ <- result.try(
+            client |> tcp.close() |> result.map_error(string.inspect),
+          )
+          Ok(bytes_tree.from_bit_array(data))
+        }
+        _ -> Error("Passive not connected")
+      }
+
+      case result {
+        Ok(data) -> {
+          logging.log(
+            logging.Debug,
+            "Received "
+              <> int.to_string(bytes_tree.byte_size(data))
+              <> " bytes over PASV",
+          )
+
+          let reply = callback(data)
+          let _ = tcp.send(reply_sock, bytes_tree.from_string(reply <> "\r\n"))
+          Nil
+        }
+
+        Error(e) -> {
+          logging.log(
+            logging.Warning,
+            "Failed to receive data over PASV: " <> e,
+          )
+
+          let _ =
+            tcp.send(
+              reply_sock,
+              bytes_tree.from_string("425 Failed to transfer\r\n"),
+            )
+          Nil
+        }
+      }
+
+      actor.continue(state)
     }
   }
 }

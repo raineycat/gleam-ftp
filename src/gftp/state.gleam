@@ -50,7 +50,10 @@ pub type PassiveConnMessage {
     reply_sock: socket.Socket,
     reply: String,
   )
-  ReceiveFromClient
+  ReceiveFromClient(
+    callback: fn(bytes_tree.BytesTree) -> String,
+    reply_sock: socket.Socket,
+  )
 }
 
 pub type RenameState {
