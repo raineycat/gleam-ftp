@@ -12,6 +12,7 @@ pub type ClientState {
     transfer_type: TransferType,
     data_conn: DataConnection,
     encoding: EncodingType,
+    renaming: RenameState,
   )
 }
 
@@ -32,7 +33,7 @@ pub type EncodingType {
 }
 
 pub type DataConnection {
-  None
+  NoConnection
   Passive(conn: process.Subject(PassiveConnMessage))
   Active(addr: glisten.IpAddress, port: Int)
 }
@@ -52,6 +53,11 @@ pub type PassiveConnMessage {
   ReceiveFromClient
 }
 
+pub type RenameState {
+  NoRename
+  RenameFrom(orig: String)
+}
+
 pub fn new_client(sock: socket.Socket) -> ClientState {
   ClientState(
     sock:,
@@ -59,7 +65,8 @@ pub fn new_client(sock: socket.Socket) -> ClientState {
     closing: False,
     working_dir: "/",
     transfer_type: Text,
-    data_conn: None,
+    data_conn: NoConnection,
     encoding: Ascii,
+    renaming: NoRename,
   )
 }

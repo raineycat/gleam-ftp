@@ -324,9 +324,53 @@ pub fn handle_cmd(
       }
     }
 
-    ["RNFR", _name] -> todo
+    ["RNFR", ..name] -> {
+      let path =
+        name
+        |> string.join(" ")
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
 
-    ["RNTO", _name] -> todo
+      let state = state.ClientState(..state, renaming: state.RenameFrom(path))
+      case utils.fs_exists(path) {
+        True -> Ok(#("350 Continue", state))
+        False -> Error("450 The item doesn't exist")
+      }
+    }
+
+    ["RNTO", ..name] -> {
+      let path =
+        name
+        |> string.join(" ")
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+
+      case state.renaming {
+        state.RenameFrom(orig) -> {
+          logging.log(
+            logging.Debug,
+            "Renaming from '" <> orig <> "' to '" <> path <> "'",
+          )
+
+          case simplifile.rename(orig, path) {
+            Ok(_) -> {
+              let state = state.ClientState(..state, renaming: state.NoRename)
+              Ok(#("250 Renamed", state))
+            }
+            Error(e) -> {
+              logging.log(
+                logging.Warning,
+                "Failed to rename! " <> string.inspect(e),
+              )
+              Error("500 Failed to rename")
+            }
+          }
+        }
+        _ -> Error("503 Invalid command sequence")
+      }
+    }
 
     ["STOR", _name] -> todo
 
