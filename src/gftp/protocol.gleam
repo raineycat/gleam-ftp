@@ -5,6 +5,7 @@ import gftp/os_info
 import gftp/passive
 import gftp/state
 import gftp/utils
+import gleam/bit_array
 import gleam/bytes_tree
 import gleam/erlang/process
 import gleam/int
@@ -234,7 +235,37 @@ pub fn handle_cmd(
         |> filepath.join(state.working_dir, _)
         |> transform_path(opts, _)
 
-      Error("502 Command not implemented: " <> path)
+      case simplifile.read_bits(path) {
+        Ok(data) ->
+          Ok(#(
+            "213 "
+              <> int.to_string(case state.transfer_type {
+              state.Text ->
+                case
+                  data
+                  |> bit_array.to_string()
+                {
+                  Ok(str) ->
+                    str
+                    |> utils.normalise_newlines()
+                    |> string.byte_size()
+                  Error(_) -> 0
+                }
+              state.Binary -> bit_array.byte_size(data)
+            }),
+            state,
+          ))
+        Error(e) -> {
+          logging.log(
+            logging.Warning,
+            "Failed to read file for size calc: "
+              <> path
+              <> ": "
+              <> string.inspect(e),
+          )
+          Error("500 Failed to check the file size")
+        }
+      }
     }
 
     ["RETR", ..path] -> {
