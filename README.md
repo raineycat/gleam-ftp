@@ -7,7 +7,7 @@ A simple FTP server written in Gleam
 
 ```sh
 # Run the server on port 2100
-gleam run -- --port 2100
+gleam run -- --port 2100 --base-dir ./data
 ```
 
 ### Available options:
@@ -15,4 +15,5 @@ gleam run -- --port 2100
 - `--port`: The port the server listens on (default: `21`)
 - `--welcome`: The welcome message to send to clients (default: `GleamFTP Server`)
 - `--external-address`: The public IP of the server, sent to clients when connecting with passive mode (default: `127.0.0.1`)
+- `--base-dir`: The directory to serve files from (default: `.`)
 - `--help`: Shows more info about the command line options
