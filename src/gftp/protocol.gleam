@@ -244,6 +244,86 @@ pub fn handle_cmd(
       }
     }
 
+    ["REST", ..] -> Error("502 The REST command is not supported")
+
+    ["MKD", name] | ["XMKD", name] -> {
+      let path =
+        name
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+      logging.log(logging.Debug, "Make dir: " <> path)
+
+      case simplifile.create_directory_all(path) {
+        Ok(_) -> Ok(#("250 Created", state))
+        Error(e) -> {
+          logging.log(
+            logging.Warning,
+            "Failed to create dir: " <> string.inspect(e),
+          )
+          Error("500 Couldn't create directory")
+        }
+      }
+    }
+
+    ["RMD", name] | ["XRMD", name] -> {
+      let path =
+        name
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+      logging.log(logging.Debug, "Remove dir: " <> path)
+
+      case simplifile.is_directory(path) |> result.unwrap(False) {
+        True ->
+          case simplifile.delete(path) {
+            Ok(_) -> Ok(#("250 Removed", state))
+            Error(e) -> {
+              logging.log(
+                logging.Warning,
+                "Failed to remove dir: " <> string.inspect(e),
+              )
+              Error("500 Couldn't remove directory")
+            }
+          }
+        False -> Error("450 Not a directory")
+      }
+    }
+
+    ["DELE", name] -> {
+      let path =
+        name
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+      logging.log(logging.Debug, "Delete file: " <> path)
+
+      case simplifile.is_file(path) |> result.unwrap(False) {
+        True ->
+          case simplifile.delete(path) {
+            Ok(_) -> Ok(#("250 Deleted", state))
+            Error(e) -> {
+              logging.log(
+                logging.Warning,
+                "Failed to delete file: " <> string.inspect(e),
+              )
+              Error("500 Couldn't delete file")
+            }
+          }
+        False -> Error("450 Not a regular file")
+      }
+    }
+
+    ["RNFR", _name] -> todo
+
+    ["RNTO", _name] -> todo
+
+    ["STOR", _name] -> todo
+
+    ["APPE", _name] -> todo
+
+    ["STOU", _name] -> todo
+
     unknown -> {
       logging.log(
         logging.Warning,
