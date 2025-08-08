@@ -16,7 +16,13 @@ pub fn handle_begin_passive(
   state: state.ClientState,
   opts: cli.ServerOpts,
 ) -> Result(#(String, state.ClientState), String) {
-  let addr = utils.string_to_ipv4_address(opts.external_address)
+  use addr <- result.try(
+    case utils.string_to_ipv4_address(opts.external_address) {
+      Ok(a) -> Ok(a)
+      Error(_) -> Error("504 Invalid listen address")
+    },
+  )
+
   let sock =
     tcp.listen(0, [
       options.ActiveMode(options.Passive),
