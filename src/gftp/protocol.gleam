@@ -151,6 +151,7 @@ pub fn handle_cmd(
     }
 
     ["PORT", data] -> {
+      use _ <- result.try(require_login(state))
       case data |> string.split(",") |> list.map(int.parse) {
         [Ok(h1), Ok(h2), Ok(h3), Ok(h4), Ok(p1), Ok(p2)] ->
           handle_begin_active(
@@ -162,59 +163,56 @@ pub fn handle_cmd(
       }
     }
 
-    ["PASV"] -> passive.handle_begin_passive(state, opts)
+    ["PASV"] -> {
+      use _ <- result.try(require_login(state))
+      passive.handle_begin_passive(state, opts)
+    }
 
     ["LIST"] -> {
-      case state.auth {
-        state.Authenticated(_username) -> {
-          let path = transform_path(opts, state.working_dir)
-          case read_dir_ex(path) {
-            Ok(dir_list) ->
-              transmit_on_data_ch(
-                state,
-                bytes_tree.from_string(string.join(dir_list, "\r\n") <> "\r\n"),
-                "226 Finished transfer",
-              )
-            Error(e) -> {
-              logging.log(
-                logging.Warning,
-                "Failed to list dir: " <> path <> ": " <> string.inspect(e),
-              )
-              Error("451 Failed to list dir: " <> string.inspect(e))
-            }
-          }
+      use _ <- result.try(require_login(state))
+      let path = transform_path(opts, state.working_dir)
+      case read_dir_ex(path) {
+        Ok(dir_list) ->
+          transmit_on_data_ch(
+            state,
+            bytes_tree.from_string(string.join(dir_list, "\r\n") <> "\r\n"),
+            "226 Finished transfer",
+          )
+        Error(e) -> {
+          logging.log(
+            logging.Warning,
+            "Failed to list dir: " <> path <> ": " <> string.inspect(e),
+          )
+          Error("451 Failed to list dir: " <> string.inspect(e))
         }
-        _ -> Error("530 Please login first")
       }
     }
 
     ["NLST"] -> {
-      case state.auth {
-        state.Authenticated(_username) -> {
-          let path = transform_path(opts, state.working_dir)
-          case simplifile.read_directory(path) {
-            Ok(dir_list) ->
-              transmit_on_data_ch(
-                state,
-                bytes_tree.from_string(string.join(dir_list, "\r\n") <> "\r\n"),
-                "226 Finished transfer",
-              )
-            Error(e) -> {
-              logging.log(
-                logging.Warning,
-                "Failed to list dir: " <> path <> ": " <> string.inspect(e),
-              )
-              Error("451 Failed to list dir: " <> string.inspect(e))
-            }
-          }
+      use _ <- result.try(require_login(state))
+      let path = transform_path(opts, state.working_dir)
+      case simplifile.read_directory(path) {
+        Ok(dir_list) ->
+          transmit_on_data_ch(
+            state,
+            bytes_tree.from_string(string.join(dir_list, "\r\n") <> "\r\n"),
+            "226 Finished transfer",
+          )
+        Error(e) -> {
+          logging.log(
+            logging.Warning,
+            "Failed to list dir: " <> path <> ": " <> string.inspect(e),
+          )
+          Error("451 Failed to list dir: " <> string.inspect(e))
         }
-        _ -> Error("530 Please login first")
       }
     }
 
     ["ALLO"] -> Ok(#("202 Obsolete", state))
 
     ["SIZE", ..path] -> {
+      use _ <- result.try(require_login(state))
+
       let path =
         path
         |> string.join(" ")
@@ -226,6 +224,8 @@ pub fn handle_cmd(
     }
 
     ["RETR", ..path] -> {
+      use _ <- result.try(require_login(state))
+
       let path =
         path
         |> string.join(" ")
@@ -246,7 +246,7 @@ pub fn handle_cmd(
             logging.Warning,
             "Failed to transmit file: " <> string.inspect(e),
           )
-          Error("502 TODO")
+          Error("500 Failed to send file")
         }
       }
     }
@@ -254,6 +254,8 @@ pub fn handle_cmd(
     ["REST", ..] -> Error("502 The REST command is not supported")
 
     ["MKD", ..name] | ["XMKD", ..name] -> {
+      use _ <- result.try(require_login(state))
+
       let path =
         name
         |> string.join(" ")
@@ -275,6 +277,8 @@ pub fn handle_cmd(
     }
 
     ["RMD", ..name] | ["XRMD", ..name] -> {
+      use _ <- result.try(require_login(state))
+
       let path =
         name
         |> string.join(" ")
@@ -300,6 +304,8 @@ pub fn handle_cmd(
     }
 
     ["DELE", ..name] -> {
+      use _ <- result.try(require_login(state))
+
       let path =
         name
         |> string.join(" ")
@@ -325,6 +331,8 @@ pub fn handle_cmd(
     }
 
     ["RNFR", ..name] -> {
+      use _ <- result.try(require_login(state))
+
       let path =
         name
         |> string.join(" ")
@@ -340,6 +348,8 @@ pub fn handle_cmd(
     }
 
     ["RNTO", ..name] -> {
+      use _ <- result.try(require_login(state))
+
       let path =
         name
         |> string.join(" ")
@@ -372,11 +382,20 @@ pub fn handle_cmd(
       }
     }
 
-    ["STOR", _name] -> todo
+    ["STOR", _name] -> {
+      use _ <- result.try(require_login(state))
+      todo
+    }
 
-    ["APPE", _name] -> todo
+    ["APPE", _name] -> {
+      use _ <- result.try(require_login(state))
+      todo
+    }
 
-    ["STOU", _name] -> todo
+    ["STOU", _name] -> {
+      use _ <- result.try(require_login(state))
+      todo
+    }
 
     unknown -> {
       logging.log(
@@ -579,5 +598,14 @@ fn handle_text_read(
         { text |> utils.normalise_newlines() } <> "\r\n",
       ))
     Error(e) -> Error(e)
+  }
+}
+
+fn require_login(
+  state: state.ClientState,
+) -> Result(#(String, state.ClientState), String) {
+  case state.auth {
+    state.Authenticated(_username) -> Ok(#("200 OK", state))
+    _ -> Error("530 Please login first")
   }
 }
