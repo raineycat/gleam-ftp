@@ -1,6 +1,7 @@
 import gftp/cli
 import gftp/state
 import gftp/utils
+import gleam/bit_array
 import gleam/bytes_tree
 import gleam/int
 import gleam/list
@@ -140,9 +141,9 @@ pub fn conn_handle_msg(
     state.ReceiveFromClient(callback, reply_sock) -> {
       let result = case state {
         state.Connected(client) -> {
-          use data <- result.try(
-            client |> tcp.receive(0) |> result.map_error(string.inspect),
-          )
+          let data =
+            client
+            |> receive_loop(<<>>)
           logging.log(logging.Debug, "Got PASV data: " <> string.inspect(data))
           use _ <- result.try(
             client |> tcp.close() |> result.map_error(string.inspect),
@@ -183,5 +184,12 @@ pub fn conn_handle_msg(
 
       actor.continue(state)
     }
+  }
+}
+
+fn receive_loop(sock: socket.Socket, acc: BitArray) -> BitArray {
+  case sock |> tcp.receive(0) {
+    Ok(data) -> sock |> receive_loop(bit_array.append(acc, data))
+    Error(_) -> acc
   }
 }
