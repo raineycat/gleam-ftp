@@ -130,9 +130,21 @@ pub fn handle_cmd(
 
     ["USER", username] -> {
       logging.log(logging.Info, "User '" <> username <> "' is trying to log in")
-      let state =
-        state.ClientState(..state, auth: state.Authenticating(username))
-      Ok(#("331 Password required", state))
+
+      case username {
+        "anonymous" if opts.allow_anon -> {
+          let state = state.ClientState(..state, auth: state.Anonymous)
+          Ok(#("230 Anonymous access allowed", state))
+        }
+        "anonymous" -> {
+          Error("430 Anonymous access not allowed")
+        }
+        username -> {
+          let state =
+            state.ClientState(..state, auth: state.Authenticating(username))
+          Ok(#("331 Password required", state))
+        }
+      }
     }
 
     ["PASS", password] ->
@@ -170,6 +182,7 @@ pub fn handle_cmd(
 
     ["LIST"] -> {
       use _ <- result.try(require_login(state))
+
       let path = transform_path(opts, state.working_dir)
       case read_dir_ex(path) {
         Ok(dir_list) ->
@@ -190,6 +203,7 @@ pub fn handle_cmd(
 
     ["NLST"] -> {
       use _ <- result.try(require_login(state))
+
       let path = transform_path(opts, state.working_dir)
       case simplifile.read_directory(path) {
         Ok(dir_list) ->
@@ -255,6 +269,7 @@ pub fn handle_cmd(
 
     ["MKD", ..name] | ["XMKD", ..name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
 
       let path =
         name
@@ -278,6 +293,7 @@ pub fn handle_cmd(
 
     ["RMD", ..name] | ["XRMD", ..name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
 
       let path =
         name
@@ -305,6 +321,7 @@ pub fn handle_cmd(
 
     ["DELE", ..name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
 
       let path =
         name
@@ -332,6 +349,7 @@ pub fn handle_cmd(
 
     ["RNFR", ..name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
 
       let path =
         name
@@ -349,6 +367,7 @@ pub fn handle_cmd(
 
     ["RNTO", ..name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
 
       let path =
         name
@@ -384,6 +403,7 @@ pub fn handle_cmd(
 
     ["STOR", ..name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
 
       let path =
         name
@@ -411,11 +431,13 @@ pub fn handle_cmd(
 
     ["APPE", _name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
       Error("502 TODO")
     }
 
     ["STOU", _name] -> {
       use _ <- result.try(require_login(state))
+      use _ <- result.try(require_write_access(state, opts))
       Error("502 TODO")
     }
 
@@ -678,7 +700,20 @@ fn require_login(
   state: state.ClientState,
 ) -> Result(#(String, state.ClientState), String) {
   case state.auth {
-    state.Authenticated(_username) -> Ok(#("200 OK", state))
+    state.Authenticated(_username) | state.Anonymous -> Ok(#("200 OK", state))
+    _ -> Error("530 Please login first")
+  }
+}
+
+fn require_write_access(
+  state: state.ClientState,
+  opts: cli.ServerOpts,
+) -> Result(#(String, state.ClientState), String) {
+  case state.auth {
+    state.Authenticated(_) if opts.read_only ->
+      Error("530 This server is read-only")
+    state.Authenticated(_) -> Ok(#("200 OK", state))
+    state.Anonymous -> Error("530 Anonymous users have no write access")
     _ -> Error("530 Please login first")
   }
 }

@@ -20,6 +20,7 @@ pub type AuthState {
   Unauthenticated
   Authenticating(username: String)
   Authenticated(username: String)
+  Anonymous
 }
 
 pub type TransferType {

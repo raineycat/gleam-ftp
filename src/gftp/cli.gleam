@@ -1,4 +1,5 @@
 import clip.{type Command}
+import clip/flag.{type Flag}
 import clip/opt.{type Opt}
 import gleam/list
 import gleam/string
@@ -11,6 +12,8 @@ pub type ServerOpts {
     external_address: String,
     base_dir: String,
     allowed_logins: List(#(String, String)),
+    allow_anon: Bool,
+    read_only: Bool,
   )
 }
 
@@ -22,12 +25,18 @@ fn int_opt(name: String, help_text: String, default: Int) -> Opt(Int) {
   opt.new(name) |> opt.int |> opt.help(help_text) |> opt.default(default)
 }
 
+fn flag_opt(name: String, help_text: String) -> Flag {
+  flag.new(name) |> flag.help(help_text)
+}
+
 pub fn command() -> Command(ServerOpts) {
   clip.command({
-    use address <- clip.parameter
+    use allow_anon <- clip.parameter
+    use read_only <- clip.parameter
+    use bind_addr <- clip.parameter
     use port <- clip.parameter
-    use welcome <- clip.parameter
-    use external <- clip.parameter
+    use welcome_msg <- clip.parameter
+    use external_address <- clip.parameter
     use base_dir <- clip.parameter
     use logins <- clip.parameter
 
@@ -41,8 +50,22 @@ pub fn command() -> Command(ServerOpts) {
         }
       })
 
-    ServerOpts(address, port, welcome, external, base_dir, login_list)
+    ServerOpts(
+      bind_addr:,
+      port:,
+      welcome_msg:,
+      external_address:,
+      base_dir:,
+      allowed_logins: login_list,
+      allow_anon:,
+      read_only:,
+    )
   })
+  |> clip.flag(flag_opt("allow-anon", "Allow anonymous client connections"))
+  |> clip.flag(flag_opt(
+    "read-only",
+    "Block all create/write/delete operations to the server",
+  ))
   |> clip.opt(str_opt("address", "The address to bind to", "0.0.0.0"))
   |> clip.opt(int_opt("port", "The port to listen on", 21))
   |> clip.opt(str_opt(

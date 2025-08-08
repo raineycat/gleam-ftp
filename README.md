@@ -11,6 +11,8 @@ gleam run -- --port 2100 --base-dir ./data --welcome "My FTP Server" --allowed-l
 ```
 
 ### Available options:
+- `--allow-anon`: Allows anonymous connections to the server
+- `--read-only`: Rejects create/write/delete actions sent by clients
 - `--address`: The address to bind to (default: `0.0.0.0`)
 - `--port`: The port the server listens on (default: `21`)
 - `--welcome`: The welcome message to send to clients (default: `GleamFTP Server`)
