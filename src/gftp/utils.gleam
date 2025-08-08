@@ -17,3 +17,10 @@ pub fn string_to_ipv4_address(addr: String) -> options.IpAddress {
     _ -> panic as { "Invalid IPv4 address: " <> addr }
   }
 }
+
+pub fn unquote(s: String) -> String {
+  case string.starts_with(s, "\"") && string.starts_with(s, "\"") {
+    True -> s |> string.drop_start(1) |> string.drop_end(1)
+    False -> s
+  }
+}

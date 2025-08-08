@@ -214,6 +214,11 @@ pub fn handle_cmd(
 
     ["ALLO"] -> Ok(#("202 Obsolete", state))
 
+    ["SIZE", path] -> {
+      let path = path |> utils.unquote()
+      Error("502 Command not implemented: " <> path)
+    }
+
     unknown -> {
       logging.log(
         logging.Warning,
