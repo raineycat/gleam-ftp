@@ -19,7 +19,7 @@ pub fn string_to_ipv4_address(addr: String) -> options.IpAddress {
 }
 
 pub fn unquote(s: String) -> String {
-  case string.starts_with(s, "\"") && string.starts_with(s, "\"") {
+  case string.starts_with(s, "\"") && string.ends_with(s, "\"") {
     True -> s |> string.drop_start(1) |> string.drop_end(1)
     False -> s
   }
