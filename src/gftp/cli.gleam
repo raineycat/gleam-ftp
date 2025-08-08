@@ -1,5 +1,7 @@
 import clip.{type Command}
 import clip/opt.{type Opt}
+import gleam/list
+import gleam/string
 
 pub type ServerOpts {
   ServerOpts(
@@ -8,6 +10,7 @@ pub type ServerOpts {
     welcome_msg: String,
     external_address: String,
     base_dir: String,
+    allowed_logins: List(#(String, String)),
   )
 }
 
@@ -26,8 +29,19 @@ pub fn command() -> Command(ServerOpts) {
     use welcome <- clip.parameter
     use external <- clip.parameter
     use base_dir <- clip.parameter
+    use logins <- clip.parameter
 
-    ServerOpts(address, port, welcome, external, base_dir)
+    let login_list =
+      logins
+      |> string.split(",")
+      |> list.map(fn(x) {
+        case x |> string.split(":") {
+          [user, pw] -> #(user, pw)
+          _ -> panic as "Invalid login given!"
+        }
+      })
+
+    ServerOpts(address, port, welcome, external, base_dir, login_list)
   })
   |> clip.opt(str_opt("address", "The address to bind to", "0.0.0.0"))
   |> clip.opt(int_opt("port", "The port to listen on", 21))
@@ -42,4 +56,9 @@ pub fn command() -> Command(ServerOpts) {
     "127.0.0.1",
   ))
   |> clip.opt(str_opt("base-dir", "The base directory to serve files from", "."))
+  |> clip.opt(str_opt(
+    "allowed-logins",
+    "A list of users and passwords to allow logins from. Format: 'user1:pw1,user2:pw2'",
+    "root:root",
+  ))
 }

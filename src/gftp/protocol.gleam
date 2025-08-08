@@ -138,7 +138,7 @@ pub fn handle_cmd(
     ["PASS", password] ->
       case state.auth {
         state.Authenticating(username) ->
-          handle_login(state, username, password)
+          handle_login(state, opts, username, password)
         _ -> Error("500 Invalid state")
       }
 
@@ -256,21 +256,29 @@ pub fn handle_cmd(
 
 fn handle_login(
   state: state.ClientState,
+  opts: cli.ServerOpts,
   username: String,
   password: String,
 ) -> Result(#(String, state.ClientState), String) {
-  let actual_pw = username <> "!"
-  case password {
-    pw if actual_pw == pw -> {
+  let res =
+    opts.allowed_logins
+    |> list.find(fn(login) {
+      let #(actual_user, actual_pw) = login
+      actual_user == username && actual_pw == password
+    })
+
+  case res {
+    Ok(login) -> {
+      let #(actual_user, _) = login
       logging.log(
         logging.Info,
-        "User '" <> username <> "' logged in successfully",
+        "User '" <> actual_user <> "' logged in successfully",
       )
       let state =
-        state.ClientState(..state, auth: state.Authenticated(username))
+        state.ClientState(..state, auth: state.Authenticated(actual_user))
       Ok(#("230 Logged in!", state))
     }
-    _ -> Error("430 Invalid UN/PW")
+    Error(_) -> Error("430 Invalid UN/PW")
   }
 }
 
