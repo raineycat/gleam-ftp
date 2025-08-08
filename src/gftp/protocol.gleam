@@ -214,14 +214,21 @@ pub fn handle_cmd(
 
     ["ALLO"] -> Ok(#("202 Obsolete", state))
 
-    ["SIZE", path] -> {
-      let path = path |> utils.unquote()
+    ["SIZE", ..path] -> {
+      let path =
+        path
+        |> string.join(" ")
+        |> utils.unquote()
+        |> filepath.join(state.working_dir, _)
+        |> transform_path(opts, _)
+
       Error("502 Command not implemented: " <> path)
     }
 
-    ["RETR", path] -> {
+    ["RETR", ..path] -> {
       let path =
         path
+        |> string.join(" ")
         |> utils.unquote()
         |> filepath.join(state.working_dir, _)
         |> transform_path(opts, _)
@@ -246,9 +253,10 @@ pub fn handle_cmd(
 
     ["REST", ..] -> Error("502 The REST command is not supported")
 
-    ["MKD", name] | ["XMKD", name] -> {
+    ["MKD", ..name] | ["XMKD", ..name] -> {
       let path =
         name
+        |> string.join(" ")
         |> utils.unquote()
         |> filepath.join(state.working_dir, _)
         |> transform_path(opts, _)
@@ -266,9 +274,10 @@ pub fn handle_cmd(
       }
     }
 
-    ["RMD", name] | ["XRMD", name] -> {
+    ["RMD", ..name] | ["XRMD", ..name] -> {
       let path =
         name
+        |> string.join(" ")
         |> utils.unquote()
         |> filepath.join(state.working_dir, _)
         |> transform_path(opts, _)
@@ -290,9 +299,10 @@ pub fn handle_cmd(
       }
     }
 
-    ["DELE", name] -> {
+    ["DELE", ..name] -> {
       let path =
         name
+        |> string.join(" ")
         |> utils.unquote()
         |> filepath.join(state.working_dir, _)
         |> transform_path(opts, _)
