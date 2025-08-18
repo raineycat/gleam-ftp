@@ -15,6 +15,7 @@ pub type ServerOpts {
     allow_anon: Bool,
     anons_can_write: Bool,
     read_only: Bool,
+    passive_port: Int,
   )
 }
 
@@ -41,6 +42,7 @@ pub fn command() -> Command(ServerOpts) {
     use external_address <- clip.parameter
     use base_dir <- clip.parameter
     use logins <- clip.parameter
+    use passive_port <- clip.parameter
 
     let login_list =
       logins
@@ -62,6 +64,7 @@ pub fn command() -> Command(ServerOpts) {
       allow_anon:,
       anons_can_write:,
       read_only:,
+      passive_port:,
     )
   })
   |> clip.flag(flag_opt("allow-anon", "Allow anonymous client connections"))
@@ -90,5 +93,10 @@ pub fn command() -> Command(ServerOpts) {
     "allowed-logins",
     "A list of users and passwords to allow logins from. Format: 'user1:pw1,user2:pw2'",
     "root:root",
+  ))
+  |> clip.opt(int_opt(
+    "passive-port",
+    "The port to use for passive data connections",
+    20,
   ))
 }
