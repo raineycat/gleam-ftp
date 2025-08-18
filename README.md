@@ -17,9 +17,10 @@ gleam run -- --port 2100 --base-dir ./data --welcome "My FTP Server" --allowed-l
 - `--external-address`: The public IP of the server, sent to clients when connecting with passive mode (default: `127.0.0.1`)
 - `--base-dir`: The directory to serve files from (default: `.`)
 - `--allowed-logins`: A list of users and passwords to authorise logins against. Format: `username:password,user2:pass2` (default: `root:root`)
-- `--help`: Shows more info about the command line options
+- `--passive-port`: The port to listen to passive connections on. Can be `0`0 to select a random port (default: `20`)
 
 ### Available flags:
 - `--allow-anon`: Allows anonymous connections to the server
 - `--anons-can-write`: Allow anonymous clients to create/write/delete files on the server; by default they have read-only access
 - `--read-only`: Rejects create/write/delete actions sent by clients
+- `--help`: Shows more info about the command line options
