@@ -27,7 +27,7 @@ pub fn handle_begin_passive(
   let sock =
     tcp.listen(opts.passive_port, [
       options.ActiveMode(options.Passive),
-      options.Ip(options.Address(addr)),
+      options.Ip(options.Any),
     ])
 
   case sock {
