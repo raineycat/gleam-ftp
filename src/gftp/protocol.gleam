@@ -181,8 +181,18 @@ pub fn handle_cmd(
       passive.handle_begin_passive(state, opts)
     }
 
-    ["LIST"] -> {
+    ["LIST", ..flags] -> {
       use _ <- result.try(require_login(state))
+
+      case flags {
+        [] -> Nil
+        _ -> {
+          logging.log(
+            logging.Warning,
+            "Additional LIST flags are not supported! " <> string.inspect(flags),
+          )
+        }
+      }
 
       let path = transform_path(opts, state.working_dir)
       case read_dir_ex(path) {
