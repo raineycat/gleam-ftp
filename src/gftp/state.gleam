@@ -41,7 +41,7 @@ pub type DataConnection {
 
 pub type PassiveConnState {
   Listening(server: socket.ListenSocket)
-  Connected(client: socket.Socket)
+  Connected(server: socket.ListenSocket, client: socket.Socket)
 }
 
 pub type PassiveConnMessage {

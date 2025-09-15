@@ -69,7 +69,16 @@ pub fn handle_begin_passive(
         }
       }
     }
-    Error(e) -> Error("500 failed to listen: " <> string.inspect(e))
+    Error(e) -> {
+      logging.log(
+        logging.Error,
+        "Failed to listening on passive socket (port "
+          <> int.to_string(opts.passive_port)
+          <> "): "
+          <> string.inspect(e),
+      )
+      Error("500 failed to listen: " <> string.inspect(e))
+    }
   }
 }
 
@@ -84,7 +93,7 @@ pub fn conn_handle_msg(
           case server |> tcp.accept() {
             Ok(sock) -> {
               logging.log(logging.Debug, "PASV connection established")
-              actor.continue(state.Connected(sock))
+              actor.continue(state.Connected(server, sock))
             }
             Error(e) -> {
               logging.log(
@@ -95,14 +104,15 @@ pub fn conn_handle_msg(
             }
           }
         }
-        state.Connected(_) -> actor.continue(state)
+        state.Connected(_, _) -> actor.continue(state)
       }
 
     state.SendToClient(data, reply_sock, reply) -> {
       let result = case state {
-        state.Connected(client) -> {
+        state.Connected(server, client) -> {
           use _ <- result.try(client |> tcp.send(data))
           use _ <- result.try(client |> tcp.close())
+          use _ <- result.try(server |> tcp.close())
           Ok(Nil)
         }
         _ -> Error(socket.Closed)
@@ -140,11 +150,14 @@ pub fn conn_handle_msg(
 
     state.ReceiveFromClient(callback, reply_sock) -> {
       let result = case state {
-        state.Connected(client) -> {
+        state.Connected(server, client) -> {
           let data =
             client
             |> receive_loop(<<>>)
           logging.log(logging.Debug, "Got PASV data: " <> string.inspect(data))
+          use _ <- result.try(
+            server |> tcp.close() |> result.map_error(string.inspect),
+          )
           use _ <- result.try(
             client |> tcp.close() |> result.map_error(string.inspect),
           )
