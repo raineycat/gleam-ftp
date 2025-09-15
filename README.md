@@ -1,6 +1,6 @@
 # Gleam FTP Server
 
-![Version](https://img.shields.io/badge/Version-1.0.0-pink)
+![Version](https://img.shields.io/badge/Version-1.0.2-pink)
 ![License](https://img.shields.io/badge/License-LGPL_3.0-green)
 
 A simple FTP server written in Gleam
